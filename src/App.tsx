@@ -76,14 +76,6 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!hydrated) return
-    const timer = window.setInterval(() => {
-      void refreshShared()
-    }, 2000)
-    return () => window.clearInterval(timer)
-  }, [hydrated])
-
   function patchSettings(patch: Partial<Settings>) {
     setState((prev) => {
       const settings = { ...prev.settings, ...patch }
@@ -184,6 +176,14 @@ export default function App() {
       saving.current = false
     }
   }
+
+  useEffect(() => {
+    if (!hydrated) return
+    const timer = window.setInterval(() => {
+      void refreshShared()
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [hydrated])
 
   function exportFile() {
     try {
