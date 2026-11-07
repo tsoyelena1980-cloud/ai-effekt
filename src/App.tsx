@@ -6,6 +6,7 @@ import { UnitView } from './components/UnitView'
 import { downloadWorkbook } from './finance/exportExcel'
 import { formatMoney } from './finance/format'
 import {
+  blankFinblockResult,
   calculatePortfolio,
   clampHorizon,
   createDemoState,
@@ -344,7 +345,13 @@ export default function App() {
           ) : null}
           {view === 'finblock' ? (
             <FinblockView
-              result={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
+              result={
+                stageId !== 'summary' && !state.stages[stageId].implemented
+                  ? blankFinblockResult(state.settings.depreciationPercent)
+                  : stageId === 'summary'
+                    ? portfolio.summary
+                    : portfolio.stages[stageId]
+              }
               stageResult={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
               settings={state.settings}
               stageInput={stageInput}
@@ -353,7 +360,6 @@ export default function App() {
                 id: stage.id,
                 label: stage.label,
                 annualEffect: state.stages[stage.id].implemented ? portfolio.stages[stage.id].annualEffect : 0,
-                ownEffect: portfolio.stages[stage.id].annualEffect,
                 implemented: state.stages[stage.id].implemented,
               }))}
               onHorizon={(years) => patchSettings({ horizonYears: clampHorizon(years) })}

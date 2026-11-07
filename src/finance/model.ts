@@ -251,6 +251,33 @@ function emptyUnit(): UnitResult {
   }
 }
 
+export function blankFinblockResult(depreciationPercent: number): FinblockResult {
+  return {
+    hoursValid: true,
+    capexShareSum: 100,
+    capexSharesValid: true,
+    processCost: 0,
+    aiTotalCost: 0,
+    remainingStaffCost: 0,
+    costAfterAi: 0,
+    operatingAnnualEffect: 0,
+    depreciationPercent,
+    annualDepreciation: 0,
+    annualEffect: 0,
+    monthlyEffect: 0,
+    reductionPercent: null,
+    totalCapex: 0,
+    paybackMonths: null,
+    roiPercent: null,
+    units: {
+      dbu: emptyUnit(),
+      ifrs: emptyUnit(),
+      fm: emptyUnit(),
+      alm: emptyUnit(),
+    },
+  }
+}
+
 export function clampHorizon(years: number): number {
   if (!Number.isFinite(years)) return 5
   return Math.min(5, Math.max(1, Math.round(years)))
