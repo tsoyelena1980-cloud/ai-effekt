@@ -49,6 +49,7 @@ export const UNITS: readonly UnitMeta[] = [
 ]
 
 export interface UnitInput {
+  implemented: boolean
   fteMonthlyCost: number
   operationsPerMonth: number
   minutesPerOperation: number
@@ -126,6 +127,7 @@ export interface FinblockResult {
 
 const DEMO_UNITS: Record<UnitId, UnitInput> = {
   dbu: {
+    implemented: true,
     fteMonthlyCost: 12_500_000,
     operationsPerMonth: 32_000,
     minutesPerOperation: 20,
@@ -134,6 +136,7 @@ const DEMO_UNITS: Record<UnitId, UnitInput> = {
     aiOpexAnnual: 400_000_000,
   },
   ifrs: {
+    implemented: true,
     fteMonthlyCost: 16_000_000,
     operationsPerMonth: 100_000 / 12,
     minutesPerOperation: 24,
@@ -142,6 +145,7 @@ const DEMO_UNITS: Record<UnitId, UnitInput> = {
     aiOpexAnnual: 180_000_000,
   },
   fm: {
+    implemented: true,
     fteMonthlyCost: 15_000_000,
     operationsPerMonth: 16_000,
     minutesPerOperation: 20,
@@ -150,6 +154,7 @@ const DEMO_UNITS: Record<UnitId, UnitInput> = {
     aiOpexAnnual: 250_000_000,
   },
   alm: {
+    implemented: true,
     fteMonthlyCost: 20_000_000,
     operationsPerMonth: 64_000 / 12,
     minutesPerOperation: 30,
@@ -161,6 +166,7 @@ const DEMO_UNITS: Record<UnitId, UnitInput> = {
 
 function zeroUnit(): UnitInput {
   return {
+    implemented: false,
     fteMonthlyCost: 0,
     operationsPerMonth: 0,
     minutesPerOperation: 0,
@@ -251,33 +257,6 @@ function emptyUnit(): UnitResult {
   }
 }
 
-export function blankFinblockResult(depreciationPercent: number): FinblockResult {
-  return {
-    hoursValid: true,
-    capexShareSum: 100,
-    capexSharesValid: true,
-    processCost: 0,
-    aiTotalCost: 0,
-    remainingStaffCost: 0,
-    costAfterAi: 0,
-    operatingAnnualEffect: 0,
-    depreciationPercent,
-    annualDepreciation: 0,
-    annualEffect: 0,
-    monthlyEffect: 0,
-    reductionPercent: null,
-    totalCapex: 0,
-    paybackMonths: null,
-    roiPercent: null,
-    units: {
-      dbu: emptyUnit(),
-      ifrs: emptyUnit(),
-      fm: emptyUnit(),
-      alm: emptyUnit(),
-    },
-  }
-}
-
 export function clampHorizon(years: number): number {
   if (!Number.isFinite(years)) return 5
   return Math.min(5, Math.max(1, Math.round(years)))
@@ -351,7 +330,7 @@ function combineUnits(parts: UnitResult[]): UnitResult {
   return combined
 }
 
-export function calculateStage(stage: StageInput, settings: Settings): FinblockResult {
+export function calculateStage(stage: StageInput, settings: Settings, includeAll = false): FinblockResult {
   const capexShareSum = UNIT_IDS.reduce((sum, id) => {
     const share = stage.capexShare[id]
     return sum + (Number.isFinite(share) ? share : 0)
@@ -368,23 +347,29 @@ export function calculateStage(stage: StageInput, settings: Settings): FinblockR
   }
 
   for (const id of UNIT_IDS) {
+    const input = stage.units[id]
+    if (!input.implemented && !includeAll) {
+      units[id] = emptyUnit()
+      continue
+    }
     const share = clamp(stage.capexShare[id], 0, 100)
-    units[id] = calculateUnit(stage.units[id], settings, (totalCapex * share) / 100)
+    units[id] = calculateUnit(input, settings, (totalCapex * share) / 100)
   }
 
   const processCost = UNIT_IDS.reduce((sum, id) => sum + units[id].processCost, 0)
   const aiTotalCost = UNIT_IDS.reduce((sum, id) => sum + units[id].aiTotalCost, 0)
   const remainingStaffCost = UNIT_IDS.reduce((sum, id) => sum + units[id].remainingStaffCost, 0)
   const costAfterAi = remainingStaffCost + aiTotalCost
-  const operatingAnnualEffect = processCost - costAfterAi
+  const operatingAnnualEffect = UNIT_IDS.reduce((sum, id) => sum + units[id].operatingAnnualEffect, 0)
   const depreciationPercent = clamp(settings.depreciationPercent, 0, 100)
-  const annualDepreciation = money((totalCapex * tenths(depreciationPercent)) / 1000)
-  const annualEffect = operatingAnnualEffect - annualDepreciation
+  const annualDepreciation = UNIT_IDS.reduce((sum, id) => sum + units[id].annualDepreciation, 0)
+  const annualEffect = UNIT_IDS.reduce((sum, id) => sum + units[id].annualEffect, 0)
+  const includedCapex = UNIT_IDS.reduce((sum, id) => sum + units[id].allocatedCapex, 0)
   const monthlyEffect = annualEffect / 12
   const reductionPercent = processCost === 0 ? null : (operatingAnnualEffect / processCost) * 100
-  const paybackMonths = operatingAnnualEffect <= 0 ? null : (totalCapex / operatingAnnualEffect) * 12
+  const paybackMonths = operatingAnnualEffect <= 0 ? null : (includedCapex / operatingAnnualEffect) * 12
   const roiPercent =
-    totalCapex === 0 ? null : ((operatingAnnualEffect * horizonYears - totalCapex) / totalCapex) * 100
+    includedCapex === 0 ? null : ((operatingAnnualEffect * horizonYears - includedCapex) / includedCapex) * 100
 
   return {
     hoursValid: true,
@@ -400,7 +385,7 @@ export function calculateStage(stage: StageInput, settings: Settings): FinblockR
     annualEffect,
     monthlyEffect,
     reductionPercent,
-    totalCapex,
+    totalCapex: includedCapex,
     paybackMonths,
     roiPercent,
     units,
@@ -413,7 +398,7 @@ export function calculatePortfolio(state: AppState): PortfolioResult {
     anomalies: calculateStage(state.stages.anomalies, state.settings),
     reporting: calculateStage(state.stages.reporting, state.settings),
   }
-  const parts = STAGE_IDS.filter((id) => state.stages[id].implemented).map((id) => stages[id])
+  const parts = STAGE_IDS.map((id) => stages[id])
   const horizonYears = clampHorizon(state.settings.horizonYears)
   const units = {
     dbu: combineUnits(parts.map((part) => part.units.dbu)),

@@ -17,25 +17,35 @@ function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function readUnit(value: unknown): UnitInput | null {
+function readUnit(value: unknown, fallbackImplemented: boolean): UnitInput | null {
   if (!value || typeof value !== 'object') return null
   const row = value as Record<string, unknown>
+  const numbers = [
+    Number(row.fteMonthlyCost),
+    Number(row.operationsPerMonth),
+    Number(row.minutesPerOperation),
+    Number(row.aiSharePercent),
+    Number(row.aiCostPerOperation),
+    Number(row.aiOpexAnnual),
+  ]
+  if (!numbers.every(isNumber)) return null
   const unit: UnitInput = {
-    fteMonthlyCost: Number(row.fteMonthlyCost),
-    operationsPerMonth: Number(row.operationsPerMonth),
-    minutesPerOperation: Number(row.minutesPerOperation),
-    aiSharePercent: Number(row.aiSharePercent),
-    aiCostPerOperation: Number(row.aiCostPerOperation),
-    aiOpexAnnual: Number(row.aiOpexAnnual),
+    implemented: typeof row.implemented === 'boolean' ? row.implemented : fallbackImplemented,
+    fteMonthlyCost: numbers[0],
+    operationsPerMonth: numbers[1],
+    minutesPerOperation: numbers[2],
+    aiSharePercent: numbers[3],
+    aiCostPerOperation: numbers[4],
+    aiOpexAnnual: numbers[5],
   }
-  return Object.values(unit).every(isNumber) ? unit : null
+  return unit
 }
 
-function readUnits(value: unknown): Record<UnitId, UnitInput> | null {
+function readUnits(value: unknown, fallbackImplemented: boolean): Record<UnitId, UnitInput> | null {
   if (!value || typeof value !== 'object') return null
   const units = {} as Record<UnitId, UnitInput>
   for (const id of UNIT_IDS) {
-    const unit = readUnit((value as Record<string, unknown>)[id])
+    const unit = readUnit((value as Record<string, unknown>)[id], fallbackImplemented)
     if (!unit) return null
     units[id] = unit
   }
@@ -68,11 +78,12 @@ function readSettings(value: unknown): Settings | null {
 function readStage(value: unknown): StageInput | null {
   if (!value || typeof value !== 'object') return null
   const row = value as Record<string, unknown>
-  const units = readUnits(row.units)
+  const units = readUnits(row.units, row.implemented === true)
   const capexShare = readShares(row.capexShare)
   const totalCapex = Number(row.totalCapex)
   if (!units || !capexShare || !isNumber(totalCapex)) return null
-  return { implemented: row.implemented !== false, totalCapex, capexShare, units }
+  const implemented = UNIT_IDS.some((id) => units[id].implemented)
+  return { implemented, totalCapex, capexShare, units }
 }
 
 export function parseStoredState(raw: string): AppState | null {
@@ -91,7 +102,7 @@ export function parseStoredState(raw: string): AppState | null {
       return { isExample: parsed.isExample === true, settings, stages }
     }
 
-    const legacyUnits = readUnits(parsed.units)
+    const legacyUnits = readUnits(parsed.units, true)
     const legacySettings = parsed.settings as Record<string, unknown> | undefined
     const legacyShares = legacySettings ? readShares(legacySettings.capexShare) : null
     const legacyCapex = Number(legacySettings?.totalCapex)

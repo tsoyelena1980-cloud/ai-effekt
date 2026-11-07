@@ -6,8 +6,8 @@ import { UnitView } from './components/UnitView'
 import { downloadWorkbook } from './finance/exportExcel'
 import { formatMoney } from './finance/format'
 import {
-  blankFinblockResult,
   calculatePortfolio,
+  calculateStage,
   clampHorizon,
   createDemoState,
   STAGES,
@@ -46,9 +46,10 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false)
   const pressTimer = useRef<number | null>(null)
   const savedJsonRef = useRef(savedJson)
+  const stateJsonRef = useRef(JSON.stringify(state))
   const saving = useRef(false)
   const portfolio = useMemo(() => calculatePortfolio(state), [state])
-  const result = stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]
+  const result = stageId === 'summary' ? portfolio.summary : calculateStage(state.stages[stageId], state.settings, true)
   const stageInput = stageId === 'summary' ? state.stages.assistants : state.stages[stageId]
 
   function flash(action: 'reset' | 'save' | 'export') {
@@ -61,6 +62,8 @@ export default function App() {
   useEffect(() => {
     savedJsonRef.current = savedJson
   }, [savedJson])
+
+  stateJsonRef.current = JSON.stringify(state)
 
   useEffect(() => {
     let active = true
@@ -93,10 +96,12 @@ export default function App() {
       const stage = prev.stages[current]
       const nextUnit = { ...stage.units[id], ...patch }
       if (sameUnit(stage.units[id], nextUnit)) return prev
+      const units = { ...stage.units, [id]: nextUnit }
+      const implemented = Object.values(units).some((unit) => unit.implemented)
       return {
         ...prev,
         isExample: false,
-        stages: { ...prev.stages, [current]: { ...stage, units: { ...stage.units, [id]: nextUnit } } },
+        stages: { ...prev.stages, [current]: { ...stage, implemented, units } },
       }
     })
   }
@@ -112,14 +117,6 @@ export default function App() {
         isExample: false,
         stages: { ...prev.stages, [current]: { ...stage, capexShare: { ...stage.capexShare, [id]: value } } },
       }
-    })
-  }
-
-  function patchImplemented(id: StageId, implemented: boolean) {
-    setState((prev) => {
-      const stage = prev.stages[id]
-      if (stage.implemented === implemented) return prev
-      return { ...prev, isExample: false, stages: { ...prev.stages, [id]: { ...stage, implemented } } }
     })
   }
 
@@ -143,7 +140,7 @@ export default function App() {
   }
 
   async function refreshShared() {
-    if (saving.current) return
+    if (saving.current || stateJsonRef.current !== savedJsonRef.current) return
     const remote = await fetchSharedState()
     if (!remote || saving.current) return
     const json = JSON.stringify(remote)
@@ -335,23 +332,17 @@ export default function App() {
           {view !== 'finblock' && stageId !== 'summary' ? (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-[#e4eaf1]">
               <p className="text-xs font-semibold text-[#33475b]">
-                {`${state.stages[stageId].implemented ? 'Этап входит в итог Финблока.' : 'Этап не входит в итог Финблока.'} Годовой эффект Финблока: ${formatMoney(portfolio.summary.annualEffect)}.`}
+                {`${state.stages[stageId].units[view].implemented ? 'Подразделение входит в этот этап Финблока.' : 'Подразделение не входит в этот этап Финблока.'} Эффект этапа: ${formatMoney(portfolio.stages[stageId].annualEffect)}. Свод: ${formatMoney(portfolio.summary.annualEffect)}.`}
               </p>
               <StatusSwitch
-                value={state.stages[stageId].implemented}
-                onChange={(implemented) => patchImplemented(stageId, implemented)}
+                value={state.stages[stageId].units[view].implemented}
+                onChange={(implemented) => patchUnit(view, { implemented })}
               />
             </div>
           ) : null}
           {view === 'finblock' ? (
             <FinblockView
-              result={
-                stageId !== 'summary' && !state.stages[stageId].implemented
-                  ? blankFinblockResult(state.settings.depreciationPercent)
-                  : stageId === 'summary'
-                    ? portfolio.summary
-                    : portfolio.stages[stageId]
-              }
+              result={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
               stageResult={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
               settings={state.settings}
               stageInput={stageInput}
@@ -359,7 +350,7 @@ export default function App() {
               stageEffects={STAGES.map((stage) => ({
                 id: stage.id,
                 label: stage.label,
-                annualEffect: state.stages[stage.id].implemented ? portfolio.stages[stage.id].annualEffect : 0,
+                annualEffect: portfolio.stages[stage.id].annualEffect,
                 implemented: state.stages[stage.id].implemented,
               }))}
               onHorizon={(years) => patchSettings({ horizonYears: clampHorizon(years) })}

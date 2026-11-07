@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { buildWorkbook } from '../src/finance/exportExcel'
 import { formatTyping } from '../src/finance/format'
-import { calculateFinblock, createDemoState, type AppState } from '../src/finance/model'
+import { calculateFinblock, calculatePortfolio, createDemoState, type AppState } from '../src/finance/model'
 
 const demo = createDemoState()
 const result = calculateFinblock(demo)
@@ -127,18 +127,36 @@ const badShares = calculateFinblock({
     assistants: { ...demo.stages.assistants, capexShare: { dbu: 40, ifrs: 20, fm: 25, alm: 20 } },
   },
 })
+const excludedUnits = {
+  dbu: { ...demo.stages.assistants.units.dbu, implemented: false },
+  ifrs: { ...demo.stages.assistants.units.ifrs, implemented: false },
+  fm: { ...demo.stages.assistants.units.fm, implemented: false },
+  alm: { ...demo.stages.assistants.units.alm, implemented: false },
+}
 const excluded = calculateFinblock({
   ...demo,
   stages: {
     ...demo.stages,
-    assistants: { ...demo.stages.assistants, implemented: false },
+    assistants: { ...demo.stages.assistants, implemented: false, units: excludedUnits },
   },
 })
 assert.equal(excluded.annualEffect, 0)
 assert.equal(excluded.totalCapex, 0)
+const onlyDbu = calculatePortfolio({
+  ...demo,
+  stages: {
+    ...demo.stages,
+    assistants: {
+      ...demo.stages.assistants,
+      units: { ...excludedUnits, dbu: demo.stages.assistants.units.dbu },
+    },
+  },
+})
+assert.equal(onlyDbu.stages.assistants.annualEffect, onlyDbu.stages.assistants.units.dbu.annualEffect)
+assert.equal(onlyDbu.summary.annualEffect, onlyDbu.stages.assistants.annualEffect + onlyDbu.stages.anomalies.annualEffect + onlyDbu.stages.reporting.annualEffect)
 
 assert.equal(badShares.capexSharesValid, false)
-assert.equal(badShares.totalCapex, 12_000_000_000)
+assert.equal(badShares.totalCapex, 12_600_000_000)
 
 const oneYear = calculateFinblock({ ...demo, settings: { ...demo.settings, horizonYears: 1 } })
 assert.ok(oneYear.roiPercent !== null && oneYear.roiPercent < (result.roiPercent ?? 0))
