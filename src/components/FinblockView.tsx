@@ -18,7 +18,7 @@ type FinblockViewProps = {
   settings: Settings
   stageInput: StageInput
   editable: boolean
-  stageEffects: ReadonlyArray<{ id: StageId; label: string; annualEffect: number; implemented: boolean }>
+  stageEffects: ReadonlyArray<{ id: StageId; label: string; annualEffect: number; ownEffect: number; implemented: boolean }>
   onHorizon: (years: number) => void
   onCapex: (value: number) => void
   onDepreciation: (value: number) => void
@@ -178,6 +178,9 @@ export function FinblockView({
             <div key={part.id} className={`rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-[#e4eaf1] ${part.implemented ? '' : 'opacity-70'}`}>
               <p className="text-xs font-semibold text-[#5c6b7e]">{part.label}</p>
               <p className="text-sm font-extrabold tabular-nums text-[#0b2545]">{formatMoney(part.annualEffect)} / год</p>
+              {!part.implemented ? (
+                <p className="text-xs text-[#5c6b7e]">{`Расчет этапа ${formatMoney(part.ownEffect)}. В итог не входит.`}</p>
+              ) : null}
             </div>
           ))}
         </section>

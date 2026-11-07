@@ -344,7 +344,7 @@ export default function App() {
           ) : null}
           {view === 'finblock' ? (
             <FinblockView
-              result={portfolio.summary}
+              result={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
               stageResult={stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]}
               settings={state.settings}
               stageInput={stageInput}
@@ -352,7 +352,8 @@ export default function App() {
               stageEffects={STAGES.map((stage) => ({
                 id: stage.id,
                 label: stage.label,
-                annualEffect: portfolio.stages[stage.id].annualEffect,
+                annualEffect: state.stages[stage.id].implemented ? portfolio.stages[stage.id].annualEffect : 0,
+                ownEffect: portfolio.stages[stage.id].annualEffect,
                 implemented: state.stages[stage.id].implemented,
               }))}
               onHorizon={(years) => patchSettings({ horizonYears: clampHorizon(years) })}
