@@ -17,7 +17,7 @@ import {
   type UnitInput,
   type ViewId,
 } from './finance/model'
-import { loadSharedState, loadState, saveSharedState, saveState } from './finance/storage'
+import { fetchSharedState, loadSharedState, loadState, saveSharedState, saveState } from './finance/storage'
 
 function sameUnit(left: UnitInput, right: UnitInput): boolean {
   return (Object.keys(left) as Array<keyof UnitInput>).every((key) => left[key] === right[key])
@@ -39,10 +39,13 @@ export default function App() {
   const [resetKey, setResetKey] = useState(0)
   const [exportError, setExportError] = useState<string | null>(null)
   const [savedNotice, setSavedNotice] = useState(false)
+  const [remoteNotice, setRemoteNotice] = useState(false)
   const [pressed, setPressed] = useState<'reset' | 'save' | 'export' | null>(null)
   const [stageId, setStageId] = useState<'summary' | StageId>('summary')
   const [hydrated, setHydrated] = useState(false)
   const pressTimer = useRef<number | null>(null)
+  const savedJsonRef = useRef(savedJson)
+  const saving = useRef(false)
   const portfolio = useMemo(() => calculatePortfolio(state), [state])
   const result = stageId === 'summary' ? portfolio.summary : portfolio.stages[stageId]
   const stageInput = stageId === 'summary' ? state.stages.assistants : state.stages[stageId]
@@ -55,17 +58,31 @@ export default function App() {
   const dirty = JSON.stringify(state) !== savedJson
 
   useEffect(() => {
+    savedJsonRef.current = savedJson
+  }, [savedJson])
+
+  useEffect(() => {
     let active = true
     loadSharedState().then((next) => {
       if (!active) return
+      const json = JSON.stringify(next)
+      savedJsonRef.current = json
       setState(next)
-      setSavedJson(JSON.stringify(next))
+      setSavedJson(json)
       setHydrated(true)
     })
     return () => {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const timer = window.setInterval(() => {
+      void refreshShared()
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [hydrated])
 
   function patchSettings(patch: Partial<Settings>) {
     setState((prev) => {
@@ -132,17 +149,39 @@ export default function App() {
     flash('reset')
   }
 
+  async function refreshShared() {
+    if (saving.current) return
+    const remote = await fetchSharedState()
+    if (!remote || saving.current) return
+    const json = JSON.stringify(remote)
+    if (json === savedJsonRef.current) return
+    savedJsonRef.current = json
+    saveState(remote)
+    setState(remote)
+    setSavedJson(json)
+    setResetKey((key) => key + 1)
+    setSavedNotice(false)
+    setRemoteNotice(true)
+    setExportError(null)
+  }
+
   async function save() {
     if (!hydrated) return
+    saving.current = true
     try {
       await saveSharedState(state)
+      const json = JSON.stringify(state)
+      savedJsonRef.current = json
       saveState(state)
-      setSavedJson(JSON.stringify(state))
+      setSavedJson(json)
+      setRemoteNotice(false)
       setSavedNotice(true)
       setExportError(null)
       flash('save')
     } catch {
       setExportError('Не удалось сохранить данные для других устройств.')
+    } finally {
+      saving.current = false
     }
   }
 
@@ -251,9 +290,14 @@ export default function App() {
               Расчет по введенным данным. Все суммы — в узбекских сумах.
             </p>
           )}
+          {remoteNotice && !dirty ? (
+            <p className="rounded-2xl bg-[#e7f6ee] px-4 py-3 text-sm font-semibold text-[#0d5c32]">
+              Показаны данные, которые только что сохранили на другом устройстве.
+            </p>
+          ) : null}
           {savedNotice && !dirty ? (
             <p className="rounded-2xl bg-[#e7f6ee] px-4 py-3 text-sm font-semibold text-[#0d5c32]" data-testid="saved-notice">
-              Данные сохранены. На любом устройстве откроются эти значения.
+              Данные сохранены. Они появятся на всех открытых устройствах.
             </p>
           ) : null}
           {!hydrated ? (

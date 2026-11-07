@@ -120,32 +120,21 @@ export function loadState(): AppState {
   }
 }
 
-function hasLocalSave(): boolean {
-  return localStorage.getItem(STORAGE_KEY) !== null || localStorage.getItem('finblok-ai-effect-v1') !== null
+export async function fetchSharedState(): Promise<AppState | null> {
+  try {
+    const response = await fetch('/api/state', { cache: 'no-store' })
+    if (!response.ok || response.status === 204) return null
+    return parseStoredState(await response.text())
+  } catch {
+    return null
+  }
 }
 
 export async function loadSharedState(): Promise<AppState> {
-  try {
-    const response = await fetch('/api/state', { cache: 'no-store' })
-    if (response.ok && response.status !== 204) {
-      const shared = parseStoredState(await response.text())
-      if (shared) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(shared))
-        return shared
-      }
-    }
-  } catch {
-    return loadState()
-  }
-  const local = loadState()
-  if (hasLocalSave()) {
-    try {
-      await saveSharedState(local)
-    } catch {
-      /* общее хранилище недоступно: показываем сохранение этого браузера */
-    }
-  }
-  return local
+  const shared = await fetchSharedState()
+  if (!shared) return loadState()
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(shared))
+  return shared
 }
 
 export function saveState(state: AppState) {
