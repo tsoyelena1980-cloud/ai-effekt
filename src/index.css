@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: Manrope, "Segoe UI", sans-serif;
+  background: #eef2f6;
+  color: #122033;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
